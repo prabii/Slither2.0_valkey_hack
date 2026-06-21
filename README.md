@@ -1,156 +1,87 @@
-# build-beyond-limits-2.0
-PR submissions for the Build Beyond Limits 2.0 - Powered by Valkey, Hosted by React Hyderabad
-Credit Partner - https://thebreeth.com/
+# Slither Quest — Multiplayer Snake Game
 
-Instructions releasing live on 20th June, at 3 PM
+A Slither.io-style multiplayer game built with React + Canvas, Node.js + WebSocket, Valkey (Redis), and Breeth AI for player memory.
 
-Join here - https://youtube.com/live/kTT2Kovs-y8?feature=share
+## Architecture
 
-
-# React Hyderabad x Valkey
-
-Welcome to the official open-source submission repository for the **Build Beyond Limits 2.0 - powered by Valkey and Breeth AI, and hosted by React Hyderabad**.
-
-This buildathon is focused on solving **real-world business problems using AI**. The goal is not just to write code, but to understand a problem, think from a business perspective, use the right tools, build a working solution, and present it clearly.
-
-This repository will act as the central place where all participant submissions are listed.
-
-Your actual project/code should be maintained in your own GitHub repository. This repo is only for submitting your project details.
-
----
-
-## How to Participate
-
-1. Fork this repository.
-
-2. Create your own project repository on GitHub.
-
-3. Pick one of the problem statements from `PROBLEM_STATEMENTS.md`.
-
-4. Build your project in your own GitHub repository.
-
-5. In your fork of this repository, go to the `submissions/` folder.
-
-6. Create a new markdown file using this naming format:
-
-```txt
-projectname_attendeeName.md
+```
+Browser ──input {dir, boost}──► Node.js game loop (25 Hz)
+         ◄──snapshot (world)──
+                │
+                ├── Valkey (ioredis): leaderboard, pub/sub, world snapshot
+                └── Breeth AI: per-player memory (join greeting / death log)
 ```
 
-OR
+- **Server-authoritative**: client sends only mouse direction + boost flag; server owns all positions, growth, and collision.
+- **25 ticks/sec** game loop; Valkey updated ~2×/sec to avoid remote round-trip costs.
+- **Pub/sub killfeed**: deaths published to `game:events`, subscriber relays to all WebSocket clients.
 
-```txt
-projectname_teamName.md
+## Run Steps
+
+### 1. Server
+
+```bash
+cd server
+npm install
+cp .env.example .env      # edit VALKEY_URL and optionally BREETH_API_KEY
+npm run dev
 ```
 
-Example:
+### 2. Client
 
-```txt
-ai-sales-copilot_shlok-srivastava.md
+```bash
+cd client
+npm install
+# Optional: edit .env if server is not on localhost:3001
+npm run dev
 ```
 
-7. Use `SUBMISSION_TEMPLATE.md` as the blueprint for your submission.
+Open **http://localhost:5173** in your browser.
 
-8. Fill in all the required details:
+## Environment Variables
 
-   * Project name
-   * Your name
-   * Problem statement selected
-   * Project description
-   * Approach
-   * Tools and technologies used
-   * GitHub project link
-   * LinkedIn profile
-   * GitHub username
+### server/.env
 
-9. Raise a Pull Request to this repository.
+| Variable | Description |
+|---|---|
+| `PORT` | WebSocket/HTTP port (default `3001`) |
+| `VALKEY_URL` | `rediss://user:pass@host:port` — Aiven or local Redis |
+| `BREETH_API_KEY` | `ck_live_…` — optional; game runs with in-memory fallback |
 
-10. Get your Pull Request merged.
+### client/.env
 
----
+| Variable | Description |
+|---|---|
+| `VITE_WS_URL` | WebSocket URL (default `ws://localhost:3001`) |
 
-## Important Submission Note
+## Valkey Data Model
 
-Please make sure your Pull Request is raised by today.
+| Key | Type | Usage |
+|---|---|---|
+| `game:leaderboard` | Sorted Set | `ZADD score playerId`, read with `ZREVRANGE 0 9 WITHSCORES` |
+| `game:names` | Hash | `HSET playerId name` |
+| `game:world` | String | JSON snapshot, `EX 5` TTL |
+| `game:events` | Pub/Sub | join / death events |
 
-Even if your project is incomplete, you should still submit your project details by creating a Pull Request.
+## Breeth AI
 
-You can continue building and improving your actual project in your own GitHub repository after the submission PR is merged.
+On **join**: `POST /v1/search` with player name → personalized greeting showing best length and last killer.
+On **death**: `POST /v1/episodes` stores the run narrative for future recall.
+Falls back to in-memory store automatically when `BREETH_API_KEY` is not set.
 
-The purpose of this repository is to make the hackathon open, transparent, and community-driven.
+## Controls
 
----
+| Action | Control |
+|---|---|
+| Steer | Mouse movement |
+| Boost | Hold left-click or Space |
+| Respawn | Click RESPAWN button (3 s cooldown) |
 
-## Submission Rules
+## Game Mechanics
 
-1. Each participant must submit their own project.
-
-2. Your actual project code should be in your own GitHub repository.
-
-3. Do not push your project code directly into this repository.
-
-4. This repository should only contain participant submission files.
-
-5. Each submission file must be added inside the `submissions/` folder.
-
-6. Use the correct file naming format:
-
-```txt
-projectname_attendeeName.md
-```
-OR
-```txt
-projectname_attendeeName.md
-```
-
-7. Make sure your project repository is public.
-
-8. Do not commit API keys, private tokens, passwords, or secret credentials in your project repository.
-
-9. If your project is still a work in progress, mention that clearly in your submission.
-
-10. Keep your submission clear, honest, and easy to understand.
-
----
-
-## Pull Request Title Format
-
-Please use this format for your Pull Request title:
-
-```txt
-Submission: Project Name - Attendee Name/ Team Name
-```
-
-Example:
-
-```txt
-Submission: AI Sales Copilot - Shlok Srivastava
-```
-
----
-
-## What Makes a Good Submission?
-
-A good submission should clearly explain:
-
-* What problem you selected
-* What your project does
-* Why your solution is useful
-* How you approached the problem
-* What AI tools or technologies you used
-* What is already working
-* What you plan to improve next
-
-The project does not have to be perfect. We care about your thought process, execution, learning, and ability to solve a real-world problem.
-
----
-
-## About the Build Beyond Limits 2.0
-
-This hackathon is hosted by **React Hyderabad** in collaboration with **Valkey** and **Breeth AI**.
-
-The goal is to bring builders together to solve meaningful problems using AI, frontend, backend, cloud, automation, and modern development tools.
-
-Build with intent.
-Solve with clarity.
-Ship with confidence.
+- World is **4000×4000** with a grid background; camera follows your snake head.
+- Eating pellets grows your snake and increases score.
+- Boosting increases speed but burns length and drops pellets.
+- Colliding **head-first into another snake's body** kills you.
+- Hitting the **world border** kills you.
+- Dead snakes explode into pellets.
